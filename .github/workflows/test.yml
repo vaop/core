@@ -1,0 +1,102 @@
+name: Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  laravel-tests:
+
+    runs-on: ubuntu-latest
+    if: github.repository == 'vaop/core'
+    strategy:
+      fail-fast: true
+      matrix:
+        php-versions: ['8.0']
+    name: PHP ${{ matrix.php-versions }}
+    env:
+      extensions: intl, pcov, mbstring
+      key: cache-v1
+
+    services:
+      mariadb:
+        image: mariadb:10.6
+        ports:
+          - 3306
+        env:
+          MYSQL_USER: user
+          MYSQL_PASSWORD: password
+          MYSQL_DATABASE: test
+          MYSQL_ROOT_PASSWORD: password
+        options: --health-cmd="mysqladmin ping" --health-interval=5s --health-timeout=2s --health-retries=3
+      
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      
+    # Configure Caching
+    - name: Setup cache environment
+      id: cache-env
+      uses: shivammathur/cache-extensions@v1
+      with:
+        php-version: ${{ matrix.php-versions }}
+        extensions: ${{ env.extensions }}
+        key: ${{ env.key }}
+
+    - name: Cache extensions
+      uses: actions/cache@v1
+      with:
+        path: ${{ steps.cache-env.outputs.dir }}
+        key: ${{ steps.cache-env.outputs.key }}
+        restore-keys: ${{ steps.cache-env.outputs.key }}
+
+    - name: Get composer cache directory
+      id: composer-cache
+      run: echo "::set-output name=dir::$(composer config cache-files-dir)"
+
+    - name: Cache dependencies
+      uses: actions/cache@v2
+      with:
+        path: ${{ steps.composer-cache.outputs.dir }}
+        key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+        
+    # Configure PHP
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: ${{ matrix.php-versions }}
+        extensions: ${{ env.extensions }}
+        ini-values: post_max_size=256M, short_open_tag=On
+        coverage: xdebug
+        tools: phpunit
+        
+    # Configure Services
+    - name: Verify MariaDB connection
+      env:
+        PORT: ${{ job.services.mariadb.ports[3306] }}
+      run: |
+        while ! mysqladmin ping -h"127.0.0.1" -P"$PORT" --silent; do
+          sleep 1
+        done
+          
+    # Configure Environment
+    - name: Configure Environment
+      run: |
+        php --version
+        mysql --version
+        composer install --dev --no-interaction --verbose
+        chmod -R 777 storage bootstrap/cache
+        php artisan migrate:refresh --seed --force
+      env:
+        DB_HOST: 127.0.0.1
+        DB_PORT: ${{ job.services.mariadb.ports[3306] }}
+        DB_DATABASE: test
+        DB_USERNAME: user
+        DB_PASSWORD: password
+        
+    # Run Tests
+    - name: Run Tests
+      run: |
+        vendor/bin/phpunit --debug --verbose
