@@ -91,7 +91,7 @@ jobs:
         php artisan migrate:refresh --seed --force
       env:
         DB_DATABASE: test
-        DB_USERNAME: root
+        DB_USERNAME: user
         DB_PASSWORD: password
         
     # Run Tests
