@@ -89,6 +89,10 @@ jobs:
         composer install --dev --no-interaction --verbose
         chmod -R 777 storage bootstrap/cache
         php artisan migrate:refresh --seed --force
+      env:
+        DB_DATABASE: test
+        DB_USERNAME: root
+        DB_PASSWORD: password
         
     # Run Tests
     - name: Run Tests
